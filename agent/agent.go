@@ -86,11 +86,15 @@ func (a *Agent) Run(ctx context.Context, userQuery string) error {
 		}
 
 		fmt.Println() // newline after streamed text
-		fmt.Fprintf(os.Stderr, "\u2192 %s %s\n", tc.Name, string(tc.Input))
+		if a.Verbose {
+			fmt.Fprintf(os.Stderr, "\u2192 %s %s\n", tc.Name, string(tc.Input))
+		}
 
 		tool, err := a.Registry.Get(tc.Name)
 		if err != nil {
-			fmt.Fprintf(os.Stderr, "\u2717 %s\n", err)
+			if a.Verbose {
+				fmt.Fprintf(os.Stderr, "\u2717 %s\n", err)
+			}
 			history = append(history, Message{
 				Role:    RoleUser,
 				Content: fmt.Sprintf("tool_result(%s): error: %s", tc.Name, err),
@@ -100,7 +104,9 @@ func (a *Agent) Run(ctx context.Context, userQuery string) error {
 
 		result, err := tool.Execute(ctx, tc.Input)
 		if err != nil {
-			fmt.Fprintf(os.Stderr, "\u2717 error: %s\n", err)
+			if a.Verbose {
+				fmt.Fprintf(os.Stderr, "\u2717 error: %s\n", err)
+			}
 			history = append(history, Message{
 				Role:    RoleUser,
 				Content: fmt.Sprintf("tool_result(%s): error: %s", tc.Name, err),
@@ -108,8 +114,8 @@ func (a *Agent) Run(ctx context.Context, userQuery string) error {
 			continue
 		}
 
-		fmt.Fprintf(os.Stderr, "\u2713 done\n")
 		if a.Verbose {
+			fmt.Fprintf(os.Stderr, "\u2713 done\n")
 			fmt.Fprintln(os.Stderr, result)
 		}
 		history = append(history, Message{

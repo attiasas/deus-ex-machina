@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"os"
 
 	"github.com/attiasas/deus-ex-machina/agent"
 )
@@ -18,19 +19,25 @@ type ollama struct {
 	inner   *openAICompat
 	baseURL string
 	model   string
+	log     io.Writer
 }
 
-func NewOllama(model, baseURL string) Provider {
+func NewOllama(model, baseURL string, verbose bool) Provider {
 	if model == "" {
 		model = ollamaDefaultModel
 	}
 	if baseURL == "" {
 		baseURL = ollamaDefaultBaseURL
 	}
+	var logW io.Writer = io.Discard
+	if verbose {
+		logW = os.Stderr
+	}
 	return &ollama{
 		inner:   &openAICompat{baseURL: baseURL, apiKey: "ollama", model: model},
 		baseURL: baseURL,
 		model:   model,
+		log:     logW,
 	}
 }
 
@@ -71,7 +78,7 @@ func (o *ollama) ensureModel(ctx context.Context) error {
 		}
 	}
 
-	fmt.Printf("pulling model %s ...\n", o.model)
+	fmt.Fprintf(o.log, "pulling model %s ...\n", o.model)
 	body, _ := json.Marshal(map[string]any{"name": o.model, "stream": false})
 	req, _ := http.NewRequestWithContext(ctx, http.MethodPost, o.baseURL+"/api/pull", bytes.NewReader(body))
 	req.Header.Set("Content-Type", "application/json")
@@ -81,6 +88,6 @@ func (o *ollama) ensureModel(ctx context.Context) error {
 	}
 	defer pullResp.Body.Close()
 	io.Copy(io.Discard, pullResp.Body)
-	fmt.Printf("model %s ready\n", o.model)
+	fmt.Fprintf(o.log, "model %s ready\n", o.model)
 	return nil
 }

@@ -86,6 +86,7 @@ Examples:
 		Port:       *localPort,
 		NGPULayers: *localGPU,
 		NCtx:       *localCtx,
+		Verbose:    *verbose,
 	}
 	p, err := provider.New(*providerName, *model, *baseURL, apiKey, localCfg)
 	if err != nil {
