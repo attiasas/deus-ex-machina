@@ -1,0 +1,12 @@
+# IDEs
+.idea
+.vscode
+.cursor
+*.iml
+__debug*
+
+# IOS
+*.DS_Store
+
+# Output
+deus

@@ -16,8 +16,6 @@ type huggingFace struct {
 	inner *openAICompat
 }
 
-// NewHuggingFace creates a provider backed by the HuggingFace Inference API.
-// apiKey defaults to $HF_TOKEN if empty. model defaults to hfDefaultModel if empty.
 func NewHuggingFace(apiKey, model string) Provider {
 	if apiKey == "" {
 		apiKey = os.Getenv("HF_TOKEN")
@@ -28,9 +26,9 @@ func NewHuggingFace(apiKey, model string) Provider {
 	return &huggingFace{inner: &openAICompat{baseURL: hfBaseURL, apiKey: apiKey, model: model}}
 }
 
-func (h *huggingFace) Complete(ctx context.Context, messages []agent.Message, tools []agent.ToolDef, out io.Writer) (*agent.Response, error) {
+func (h *huggingFace) Complete(ctx context.Context, messages []agent.Message, out io.Writer) (*agent.Response, error) {
 	if h.inner.apiKey == "" {
 		return nil, fmt.Errorf("deus: HF_TOKEN is not set — get a free token at https://huggingface.co/settings/tokens")
 	}
-	return h.inner.Complete(ctx, messages, tools, out)
+	return h.inner.Complete(ctx, messages, out)
 }

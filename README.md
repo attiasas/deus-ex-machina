@@ -2,7 +2,7 @@
 
 A free, open-source AI coding agent that runs locally by default. No API keys required.
 
-**Default:** downloads [Qwen2.5-Coder-7B-Instruct](https://huggingface.co/Qwen/Qwen2.5-Coder-7B-Instruct-GGUF) (~4.7 GB, Apache-2.0) and runs it on your machine. Cloud providers (Anthropic, OpenAI, Gemini, HuggingFace) are optional.
+**Default:** downloads [Qwen2.5-7B-Instruct](https://huggingface.co/Qwen/Qwen2.5-7B-Instruct-GGUF) (~4.7 GB, Apache-2.0) and runs it on your machine. This model has the best tool-calling format compliance among 7B local models. Cloud providers (Anthropic, OpenAI, Gemini, HuggingFace) are optional.
 
 The agent loops autonomously: it reasons, picks tools, acts, observes the results, and repeats until the task is done.
 
@@ -69,7 +69,7 @@ git diff HEAD~1 | deus "write a commit message for these changes"
 
 | Provider | Flag | Model default | Requires |
 |---|---|---|---|
-| **local** *(default)* | `-provider local` | `Qwen/Qwen2.5-Coder-7B-Instruct-GGUF` | `llama-server` in PATH |
+| **local** *(default)* | `-provider local` | `Qwen/Qwen2.5-7B-Instruct-GGUF` | `llama-server` in PATH |
 | huggingface | `-provider huggingface` | `Qwen/Qwen2.5-Coder-7B-Instruct` | `HF_TOKEN` env var |
 | ollama | `-provider ollama` | `qwen2.5-coder:7b` | Ollama running (`ollama serve`) |
 | anthropic | `-provider anthropic` | `claude-sonnet-4-6` | `ANTHROPIC_API_KEY` |

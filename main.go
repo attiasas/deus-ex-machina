@@ -13,8 +13,6 @@ import (
 	"github.com/attiasas/deus-ex-machina/tools"
 )
 
-const defaultSystemPrompt = "You are a helpful coding assistant. Use the available tools to read files, write files, and run shell commands as needed to complete tasks."
-
 const usage = `deus — a free, open-source AI coding agent (default: Qwen2.5-Coder-7B, runs 100% locally)
 
 Usage:
@@ -29,16 +27,16 @@ func main() {
 	var (
 		providerName = flag.String("provider", "local", "Provider: local | huggingface | ollama | anthropic | openai | gemini")
 		model        = flag.String("model", "", "Model: HF repo ID, local .gguf path, or provider model name")
-		systemPrompt = flag.String("system", defaultSystemPrompt, "System prompt")
+		systemPrompt = flag.String("system", "", "Override system prompt (default: built-in coding assistant prompt)")
 		maxIter      = flag.Int("max-iter", 20, "Max agent loop iterations")
 		baseURL      = flag.String("base-url", "", "API base URL override (for openai / ollama)")
 		noConfirm    = flag.Bool("no-confirm", false, "Skip shell command confirmation prompts (unsafe)")
 		verbose      = flag.Bool("v", false, "Verbose: print tool outputs")
 		// local provider options
-		localFilename = flag.String("local-filename", "", "GGUF filename pattern within HF repo (e.g. *Q4_K_M.gguf)")
+		localFilename = flag.String("local-filename", "", "GGUF filename pattern within HF repo (e.g. *q4_k_m.gguf)")
 		localPort     = flag.Int("local-port", 0, "llama-server port (default 8765)")
-		localGPU      = flag.Int("local-gpu", 0, "GPU layers for llama-server (-1 = all, 0 = auto)")
-		localCtx      = flag.Int("local-ctx", 0, "Context size for llama-server (default 2048)")
+		localGPU      = flag.Int("local-gpu", 0, "GPU layers for llama-server (-1 = all, 0 = CPU-only)")
+		localCtx      = flag.Int("local-ctx", 0, "Context size for llama-server (default 8192)")
 	)
 
 	flag.Usage = func() {
@@ -53,13 +51,8 @@ Env vars:
 
 Examples:
   deus "Refactor main.go to use structured logging"
-  deus -model mistralai/Mistral-7B-Instruct-v0.3 "explain this codebase"
-
-  # Local: download GGUF from HuggingFace and run via llama-server
-  deus -provider local -model Qwen/Qwen2.5-Coder-7B-Instruct-GGUF "write tests"
-  deus -provider local -model /path/to/model.gguf "fix the bug"
-  deus -provider local -model Qwen/Qwen2.5-Coder-7B-Instruct-GGUF -local-filename "*Q4_K_M.gguf" "refactor"
-
+  deus -model Qwen/Qwen2.5-Coder-7B-Instruct-GGUF -local-filename "*q4_k_m.gguf" "write tests"
+  deus -model /path/to/model.gguf "fix the bug"
   deus -provider ollama -model llama3.2 "write tests for agent.go"
   deus -provider anthropic "fix the bug in tools/shell.go"
   echo "what does main.go do?" | deus`)
@@ -85,10 +78,8 @@ Examples:
 		os.Exit(1)
 	}
 
-	// Resolve API key from env based on provider
 	apiKey := resolveAPIKey(*providerName)
 
-	// Build provider
 	localCfg := provider.LocalConfig{
 		HFFilename: *localFilename,
 		HFToken:    os.Getenv("HF_TOKEN"),
@@ -102,18 +93,17 @@ Examples:
 		os.Exit(1)
 	}
 
-	// Build tool registry
 	reg := tools.NewRegistry()
 	reg.Register(tools.ReadFile{})
 	reg.Register(tools.WriteFile{})
 	reg.Register(tools.Shell{NoConfirm: *noConfirm})
 
 	a := &agent.Agent{
-		Provider:     p,
-		Registry:     reg,
-		MaxIter:      *maxIter,
-		Verbose:      *verbose,
-		SystemPrompt: *systemPrompt,
+		Provider:             p,
+		Registry:             reg,
+		MaxIter:              *maxIter,
+		Verbose:              *verbose,
+		SystemPromptTemplate: *systemPrompt, // empty = use default
 	}
 
 	ctx := context.Background()

@@ -20,8 +20,6 @@ type ollama struct {
 	model   string
 }
 
-// NewOllama creates a provider backed by a local Ollama instance.
-// model defaults to ollamaDefaultModel, baseURL defaults to localhost:11434.
 func NewOllama(model, baseURL string) Provider {
 	if model == "" {
 		model = ollamaDefaultModel
@@ -36,14 +34,14 @@ func NewOllama(model, baseURL string) Provider {
 	}
 }
 
-func (o *ollama) Complete(ctx context.Context, messages []agent.Message, tools []agent.ToolDef, out io.Writer) (*agent.Response, error) {
+func (o *ollama) Complete(ctx context.Context, messages []agent.Message, out io.Writer) (*agent.Response, error) {
 	if err := o.ensureHealthy(); err != nil {
 		return nil, err
 	}
 	if err := o.ensureModel(ctx); err != nil {
 		return nil, err
 	}
-	return o.inner.Complete(ctx, messages, tools, out)
+	return o.inner.Complete(ctx, messages, out)
 }
 
 func (o *ollama) ensureHealthy() error {
@@ -62,9 +60,7 @@ func (o *ollama) ensureModel(ctx context.Context) error {
 	}
 	defer resp.Body.Close()
 	var result struct {
-		Models []struct {
-			Name string `json:"name"`
-		} `json:"models"`
+		Models []struct{ Name string `json:"name"` } `json:"models"`
 	}
 	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
 		return err

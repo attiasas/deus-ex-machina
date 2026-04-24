@@ -6,11 +6,30 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"strings"
 )
+
+// SystemPromptTemplate is the default prompt. {tool_list} is replaced at runtime.
+const SystemPromptTemplate = `You are a coding assistant whose goal it is to help us solve coding tasks.
+You have access to a series of tools you can execute. Here are the tools you can execute:
+
+{tool_list}
+When you want to use a tool, reply with exactly one line in the format: ` + "`tool: TOOL_NAME({JSON_ARGS})`" + ` and nothing else.
+Use compact single-line JSON with double quotes. After receiving a tool_result(...) message, continue the task.
+If no tool is needed, respond normally.
+
+IMPORTANT: Do NOT describe or announce what you are about to do. Do NOT say "I will use..." or "Let me...".
+When a tool is needed, output ONLY the tool line immediately. No explanation before or after.
+
+Example of correct behavior:
+User: what is in config.json?
+Assistant: ` + "`tool: read_file({\"path\": \"config.json\"})`" + `
+User: tool_result(read_file): {"debug": true}
+Assistant: config.json has one setting: debug mode is enabled.`
 
 // Provider is the interface the agent uses to call a model.
 type Provider interface {
-	Complete(ctx context.Context, messages []Message, tools []ToolDef, out io.Writer) (*Response, error)
+	Complete(ctx context.Context, messages []Message, out io.Writer) (*Response, error)
 }
 
 // Tool is the interface for executable tools.
@@ -29,26 +48,23 @@ type Registry interface {
 
 // Agent runs the agentic loop.
 type Agent struct {
-	Provider     Provider
-	Registry     Registry
-	MaxIter      int
-	Verbose      bool
-	SystemPrompt string
+	Provider             Provider
+	Registry             Registry
+	MaxIter              int
+	Verbose              bool
+	SystemPromptTemplate string // defaults to SystemPromptTemplate if empty
 }
 
 func (a *Agent) Run(ctx context.Context, userQuery string) error {
-	history := []Message{
-		{Role: RoleSystem, Content: a.SystemPrompt},
-		{Role: RoleUser, Content: userQuery},
+	tmpl := a.SystemPromptTemplate
+	if tmpl == "" {
+		tmpl = SystemPromptTemplate
 	}
+	systemPrompt := buildSystemPrompt(tmpl, a.Registry.All())
 
-	toolDefs := make([]ToolDef, 0)
-	for _, t := range a.Registry.All() {
-		toolDefs = append(toolDefs, ToolDef{
-			Name:        t.Name(),
-			Description: t.Description(),
-			InputSchema: t.InputSchema(),
-		})
+	history := []Message{
+		{Role: RoleSystem, Content: systemPrompt},
+		{Role: RoleUser, Content: userQuery},
 	}
 
 	maxIter := a.MaxIter
@@ -57,52 +73,124 @@ func (a *Agent) Run(ctx context.Context, userQuery string) error {
 	}
 
 	for i := 0; i < maxIter; i++ {
-		resp, err := a.Provider.Complete(ctx, history, toolDefs, os.Stdout)
+		resp, err := a.Provider.Complete(ctx, history, os.Stdout)
 		if err != nil {
 			return err
 		}
+		history = append(history, Message{Role: RoleAssistant, Content: resp.Content})
 
-		history = append(history, Message{
-			Role:      RoleAssistant,
-			Content:   resp.Content,
-			ToolCalls: resp.ToolCalls,
-		})
-
-		if len(resp.ToolCalls) == 0 {
+		tc, ok := parseToolCall(resp.Content)
+		if !ok {
 			fmt.Println()
 			break
 		}
 
-		fmt.Println()
+		fmt.Println() // newline after streamed text
+		fmt.Fprintf(os.Stderr, "\u2192 %s %s\n", tc.Name, string(tc.Input))
 
-		var toolResults []ToolResult
-		for _, tc := range resp.ToolCalls {
-			compact, _ := json.Marshal(json.RawMessage(tc.Input))
-			fmt.Fprintf(os.Stderr, "\u2192 %s %s\n", tc.Name, string(compact))
-
-			tool, err := a.Registry.Get(tc.Name)
-			if err != nil {
-				fmt.Fprintf(os.Stderr, "\u2717 %s\n", err)
-				toolResults = append(toolResults, ToolResult{CallID: tc.ID, Content: err.Error(), IsError: true})
-				continue
-			}
-
-			result, err := tool.Execute(ctx, tc.Input)
-			if err != nil {
-				fmt.Fprintf(os.Stderr, "\u2717 error: %s\n", err)
-				toolResults = append(toolResults, ToolResult{CallID: tc.ID, Content: err.Error(), IsError: true})
-				continue
-			}
-
-			fmt.Fprintf(os.Stderr, "\u2713 done\n")
-			if a.Verbose && result != "" {
-				fmt.Fprintln(os.Stderr, result)
-			}
-			toolResults = append(toolResults, ToolResult{CallID: tc.ID, Content: result})
+		tool, err := a.Registry.Get(tc.Name)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "\u2717 %s\n", err)
+			history = append(history, Message{
+				Role:    RoleUser,
+				Content: fmt.Sprintf("tool_result(%s): error: %s", tc.Name, err),
+			})
+			continue
 		}
 
-		history = append(history, Message{Role: RoleUser, ToolResults: toolResults})
+		result, err := tool.Execute(ctx, tc.Input)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "\u2717 error: %s\n", err)
+			history = append(history, Message{
+				Role:    RoleUser,
+				Content: fmt.Sprintf("tool_result(%s): error: %s", tc.Name, err),
+			})
+			continue
+		}
+
+		fmt.Fprintf(os.Stderr, "\u2713 done\n")
+		if a.Verbose {
+			fmt.Fprintln(os.Stderr, result)
+		}
+		history = append(history, Message{
+			Role:    RoleUser,
+			Content: fmt.Sprintf("tool_result(%s): %s", tc.Name, result),
+		})
 	}
 
 	return nil
+}
+
+// buildSystemPrompt replaces {tool_list} in the template with a human-readable
+// list of available tools derived from their Name, Description, and InputSchema.
+func buildSystemPrompt(template string, tools []Tool) string {
+	lines := make([]string, 0, len(tools))
+	for _, t := range tools {
+		argStr := schemaToArgStr(t.InputSchema())
+		lines = append(lines, fmt.Sprintf("- %s(%s): %s", t.Name(), argStr, t.Description()))
+	}
+	toolList := strings.Join(lines, "\n")
+	return strings.ReplaceAll(template, "{tool_list}", toolList+"\n")
+}
+
+// schemaToArgStr converts a JSON Schema object into a compact argument hint like
+// {"path": "string", "content": "string"} for display in the system prompt.
+func schemaToArgStr(schema json.RawMessage) string {
+	var s struct {
+		Properties map[string]struct {
+			Type string `json:"type"`
+		} `json:"properties"`
+		Required []string `json:"required"`
+	}
+	if err := json.Unmarshal(schema, &s); err != nil || len(s.Properties) == 0 {
+		return "{}"
+	}
+
+	// Required params first, then optional
+	seen := map[string]bool{}
+	parts := make([]string, 0, len(s.Properties))
+	for _, name := range s.Required {
+		if prop, ok := s.Properties[name]; ok {
+			parts = append(parts, fmt.Sprintf(`"%s": "%s"`, name, prop.Type))
+			seen[name] = true
+		}
+	}
+	for name, prop := range s.Properties {
+		if !seen[name] {
+			parts = append(parts, fmt.Sprintf(`"%s": "%s"`, name, prop.Type))
+		}
+	}
+	return "{" + strings.Join(parts, ", ") + "}"
+}
+
+// parseToolCall scans response text for `tool: NAME({...})` anywhere in any line.
+// The model may prepend reasoning text or wrap the call in backticks — both are handled.
+func parseToolCall(text string) (ParsedToolCall, bool) {
+	for _, line := range strings.Split(text, "\n") {
+		line = strings.TrimSpace(line)
+
+		// Find "tool: " anywhere in the line, not just at the start
+		idx := strings.Index(line, "tool: ")
+		if idx < 0 {
+			continue
+		}
+		rest := line[idx+6:]                 // content after "tool: "
+		rest = strings.TrimSuffix(rest, "`") // strip trailing backtick if present
+
+		parenIdx := strings.Index(rest, "(")
+		if parenIdx < 0 {
+			continue
+		}
+		name := strings.TrimSpace(rest[:parenIdx])
+		argsStr := rest[parenIdx+1:]
+		if last := strings.LastIndex(argsStr, ")"); last >= 0 {
+			argsStr = argsStr[:last]
+		}
+		var raw json.RawMessage
+		if err := json.Unmarshal([]byte(argsStr), &raw); err != nil {
+			continue
+		}
+		return ParsedToolCall{Name: name, Input: raw}, true
+	}
+	return ParsedToolCall{}, false
 }

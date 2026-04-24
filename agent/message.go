@@ -10,29 +10,14 @@ const (
 	RoleAssistant Role = "assistant"
 )
 
-// ToolCall is a request from the model to invoke a tool.
-type ToolCall struct {
-	ID    string
-	Name  string
-	Input json.RawMessage
-}
-
-// ToolResult is the harness response to a ToolCall.
-type ToolResult struct {
-	CallID  string
-	Content string
-	IsError bool
-}
-
 // Message is a single turn in the conversation.
+// All tool communication is plain text — no structured tool_calls fields.
 type Message struct {
-	Role        Role
-	Content     string
-	ToolCalls   []ToolCall   // populated when role==assistant and model wants tools
-	ToolResults []ToolResult // populated for tool-result turns
+	Role    Role
+	Content string
 }
 
-// ToolDef describes a tool the model can call.
+// ToolDef describes a tool, used to build the system prompt tool list.
 type ToolDef struct {
 	Name        string
 	Description string
@@ -42,6 +27,11 @@ type ToolDef struct {
 // Response is what a provider returns per turn.
 type Response struct {
 	Content    string
-	ToolCalls  []ToolCall
 	StopReason string
+}
+
+// ParsedToolCall is the result of parsing a `tool: NAME({...})` line from a response.
+type ParsedToolCall struct {
+	Name  string
+	Input json.RawMessage
 }

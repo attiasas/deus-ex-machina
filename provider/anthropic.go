@@ -31,12 +31,22 @@ func NewAnthropic(apiKey, model string) Provider {
 	return &anthropicProvider{apiKey: apiKey, model: model}
 }
 
-func (a *anthropicProvider) Complete(ctx context.Context, messages []agent.Message, tools []agent.ToolDef, out io.Writer) (*agent.Response, error) {
+func (a *anthropicProvider) Complete(ctx context.Context, messages []agent.Message, out io.Writer) (*agent.Response, error) {
 	if a.apiKey == "" {
 		return nil, fmt.Errorf("deus: ANTHROPIC_API_KEY is not set")
 	}
 
-	system, msgs := a.buildMessages(messages)
+	// Anthropic takes system prompt as a top-level field, not in the messages array.
+	var system string
+	var msgs []map[string]any
+	for _, m := range messages {
+		if m.Role == agent.RoleSystem {
+			system = m.Content
+			continue
+		}
+		msgs = append(msgs, map[string]any{"role": string(m.Role), "content": m.Content})
+	}
+
 	reqBody := map[string]any{
 		"model":      a.model,
 		"max_tokens": 4096,
@@ -45,17 +55,6 @@ func (a *anthropicProvider) Complete(ctx context.Context, messages []agent.Messa
 	}
 	if system != "" {
 		reqBody["system"] = system
-	}
-	if len(tools) > 0 {
-		toolList := make([]map[string]any, len(tools))
-		for i, t := range tools {
-			toolList[i] = map[string]any{
-				"name":         t.Name,
-				"description":  t.Description,
-				"input_schema": t.InputSchema,
-			}
-		}
-		reqBody["tools"] = toolList
 	}
 
 	data, _ := json.Marshal(reqBody)
@@ -78,58 +77,11 @@ func (a *anthropicProvider) Complete(ctx context.Context, messages []agent.Messa
 		return nil, fmt.Errorf("anthropic error %d: %s", resp.StatusCode, string(body))
 	}
 
-	return a.parseStream(resp.Body, out)
+	return parseAnthropicStream(resp.Body, out)
 }
 
-func (a *anthropicProvider) buildMessages(messages []agent.Message) (system string, msgs []map[string]any) {
-	for _, m := range messages {
-		if m.Role == agent.RoleSystem {
-			system = m.Content
-			continue
-		}
-		switch {
-		case len(m.ToolResults) > 0:
-			content := make([]map[string]any, len(m.ToolResults))
-			for i, tr := range m.ToolResults {
-				content[i] = map[string]any{
-					"type":        "tool_result",
-					"tool_use_id": tr.CallID,
-					"content":     tr.Content,
-				}
-			}
-			msgs = append(msgs, map[string]any{"role": "user", "content": content})
-		case len(m.ToolCalls) > 0:
-			content := []map[string]any{}
-			if m.Content != "" {
-				content = append(content, map[string]any{"type": "text", "text": m.Content})
-			}
-			for _, tc := range m.ToolCalls {
-				var inputObj any
-				_ = json.Unmarshal(tc.Input, &inputObj)
-				content = append(content, map[string]any{
-					"type":  "tool_use",
-					"id":    tc.ID,
-					"name":  tc.Name,
-					"input": inputObj,
-				})
-			}
-			msgs = append(msgs, map[string]any{"role": "assistant", "content": content})
-		default:
-			msgs = append(msgs, map[string]any{"role": string(m.Role), "content": m.Content})
-		}
-	}
-	return
-}
-
-func (a *anthropicProvider) parseStream(body io.Reader, out io.Writer) (*agent.Response, error) {
-	type toolBlock struct {
-		id   string
-		name string
-		json strings.Builder
-	}
-
-	var textBuf strings.Builder
-	toolBlocks := map[int]*toolBlock{}
+func parseAnthropicStream(body io.Reader, out io.Writer) (*agent.Response, error) {
+	var buf strings.Builder
 	var stopReason string
 
 	scanner := bufio.NewScanner(body)
@@ -146,47 +98,20 @@ func (a *anthropicProvider) parseStream(body io.Reader, out io.Writer) (*agent.R
 		payload := line[6:]
 
 		switch eventType {
-		case "content_block_start":
-			var e struct {
-				Index        int `json:"index"`
-				ContentBlock struct {
-					Type string `json:"type"`
-					ID   string `json:"id"`
-					Name string `json:"name"`
-				} `json:"content_block"`
-			}
-			if json.Unmarshal([]byte(payload), &e) == nil {
-				if e.ContentBlock.Type == "tool_use" {
-					toolBlocks[e.Index] = &toolBlock{id: e.ContentBlock.ID, name: e.ContentBlock.Name}
-				}
-			}
-
 		case "content_block_delta":
 			var e struct {
-				Index int `json:"index"`
 				Delta struct {
-					Type        string `json:"type"`
-					Text        string `json:"text"`
-					PartialJSON string `json:"partial_json"`
+					Type string `json:"type"`
+					Text string `json:"text"`
 				} `json:"delta"`
 			}
-			if json.Unmarshal([]byte(payload), &e) == nil {
-				switch e.Delta.Type {
-				case "text_delta":
-					textBuf.WriteString(e.Delta.Text)
-					fmt.Fprint(out, e.Delta.Text)
-				case "input_json_delta":
-					if tb, ok := toolBlocks[e.Index]; ok {
-						tb.json.WriteString(e.Delta.PartialJSON)
-					}
-				}
+			if json.Unmarshal([]byte(payload), &e) == nil && e.Delta.Type == "text_delta" {
+				buf.WriteString(e.Delta.Text)
+				fmt.Fprint(out, e.Delta.Text)
 			}
-
 		case "message_delta":
 			var e struct {
-				Delta struct {
-					StopReason string `json:"stop_reason"`
-				} `json:"delta"`
+				Delta struct{ StopReason string `json:"stop_reason"` } `json:"delta"`
 			}
 			if json.Unmarshal([]byte(payload), &e) == nil && e.Delta.StopReason != "" {
 				stopReason = e.Delta.StopReason
@@ -196,19 +121,5 @@ func (a *anthropicProvider) parseStream(body io.Reader, out io.Writer) (*agent.R
 	if err := scanner.Err(); err != nil {
 		return nil, err
 	}
-
-	result := &agent.Response{Content: textBuf.String(), StopReason: stopReason}
-	for i := 0; i < len(toolBlocks); i++ {
-		tb := toolBlocks[i]
-		var raw json.RawMessage
-		if err := json.Unmarshal([]byte(tb.json.String()), &raw); err != nil {
-			raw = json.RawMessage("{}")
-		}
-		result.ToolCalls = append(result.ToolCalls, agent.ToolCall{
-			ID:    tb.id,
-			Name:  tb.name,
-			Input: raw,
-		})
-	}
-	return result, nil
+	return &agent.Response{Content: buf.String(), StopReason: stopReason}, nil
 }

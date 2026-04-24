@@ -27,11 +27,35 @@ Zero external Go dependencies — pure stdlib. `go build` should just work.
 ## Test
 
 ```bash
+# Run all tests
 go test ./...
-go vet ./...
+
+# Run with verbose output (shows each test name and result)
+go test ./agent/... -v
+
+# Run a single test by name
+go test ./agent/... -run TestParseToolCall_InlinePreamble
+
+# Force re-run (bypass Go's test cache)
+go test -count=1 ./...
+
+# Run tests + vet in one pass
+go test ./... && go vet ./...
 ```
 
-Tests are minimal by design — the main validation is running the binary against a real provider. When adding a new provider or tool, add at least one unit test for the core serialization/parsing logic.
+### What is tested
+
+| Package | File | Covers |
+|---|---|---|
+| `agent` | `agent_test.go` | `parseToolCall` (7 cases incl. inline preamble bug), `schemaToArgStr`, `buildSystemPrompt` |
+
+### When to add tests
+
+- **New tool:** test `Execute` with valid input, malformed JSON input, and any edge cases specific to the tool.
+- **New provider:** test the message-building and SSE-parsing logic in isolation (construct a fake SSE response body and assert the returned `*agent.Response`).
+- **Bug fix:** add a test that reproduces the bug before fixing it, then verify it passes after.
+
+Tests for providers and tools do not require a running model or API key — fake the HTTP layer or test the pure functions directly.
 
 ---
 
@@ -88,13 +112,12 @@ func NewMyProvider(apiKey, model string) Provider {
 func (p *myProvider) Complete(
     ctx context.Context,
     messages []agent.Message,
-    tools []agent.ToolDef,
     out io.Writer,
 ) (*agent.Response, error) {
-    // 1. Build the HTTP request body from messages + tools
+    // 1. Build the HTTP request body from messages (plain role+content pairs)
     // 2. POST to the API with streaming enabled
-    // 3. Parse the SSE/chunked response, write text chunks to out, accumulate tool calls
-    // 4. Return a *agent.Response with Content + ToolCalls + StopReason
+    // 3. Parse the SSE/chunked response, write text chunks to out, accumulate full text
+    // 4. Return a *agent.Response with Content + StopReason
 }
 ```
 
@@ -133,13 +156,15 @@ All providers stream. Look at `openaicompat.go` for the OpenAI pattern or `anthr
 
 ### Message translation
 
-Each provider has its own wire format. The agent passes `[]agent.Message` — you translate to the provider's format in `buildMessages` (or equivalent). Handle these three message shapes:
+Each provider has its own wire format. The agent passes `[]agent.Message` — each is a plain `{Role, Content}` pair. Translate to the provider's format. The only special case is the system message:
 
-| `agent.Message` field set | Wire format |
+| `agent.Message.Role` | Wire format |
 |---|---|
-| `Role=system, Content=...` | Provider system prompt (usually a top-level field, not in messages array) |
-| `ToolCalls` populated | Assistant turn that requested tools |
-| `ToolResults` populated | User turn returning tool outputs |
+| `system` | Provider system prompt — usually a top-level field (Anthropic, Gemini) or a `{"role":"system"}` message (OpenAI) |
+| `user` | User turn — may be a plain query or a `tool_result(NAME): ...` string |
+| `assistant` | Model response — may contain a `tool: NAME({...})` line |
+
+Tool calls and results are plain text in the `Content` field — no structured fields needed.
 
 ---
 
