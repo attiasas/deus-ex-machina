@@ -35,6 +35,7 @@ type localProvider struct {
 	port      int
 	nGPU      int // GPU layers (0 = CPU-only, -1 = all on GPU)
 	nCtx      int // context size
+	log       io.Writer
 	server    *exec.Cmd
 	inner     *openAICompat
 }
@@ -42,7 +43,7 @@ type localProvider struct {
 // NewLocal creates a local provider.
 // modelSpec is either a .gguf file path or a HuggingFace repo ID (org/model).
 // hfFilename optionally narrows which GGUF to pick from a HF repo (glob pattern).
-func NewLocal(modelSpec, hfFilename, hfToken string, port, nGPU, nCtx int) Provider {
+func NewLocal(modelSpec, hfFilename, hfToken string, port, nGPU, nCtx int, verbose bool) Provider {
 	if modelSpec == "" {
 		modelSpec = localDefaultModel
 	}
@@ -57,6 +58,10 @@ func NewLocal(modelSpec, hfFilename, hfToken string, port, nGPU, nCtx int) Provi
 	if hfToken == "" {
 		hfToken = os.Getenv("HF_TOKEN")
 	}
+	var logW io.Writer = io.Discard
+	if verbose {
+		logW = os.Stderr
+	}
 	return &localProvider{
 		modelSpec: modelSpec,
 		filename:  hfFilename,
@@ -64,16 +69,17 @@ func NewLocal(modelSpec, hfFilename, hfToken string, port, nGPU, nCtx int) Provi
 		port:      port,
 		nGPU:      nGPU,
 		nCtx:      nCtx,
+		log:       logW,
 	}
 }
 
 func (l *localProvider) Complete(ctx context.Context, messages []agent.Message, out io.Writer) (*agent.Response, error) {
 	if l.inner == nil {
-		modelPath, err := l.resolveModel(ctx, out)
+		modelPath, err := l.resolveModel(ctx)
 		if err != nil {
 			return nil, err
 		}
-		if err := l.startServer(ctx, modelPath, out); err != nil {
+		if err := l.startServer(ctx, modelPath); err != nil {
 			return nil, err
 		}
 	}
@@ -82,7 +88,7 @@ func (l *localProvider) Complete(ctx context.Context, messages []agent.Message, 
 
 // resolveModel returns an absolute path to the first (or only) .gguf shard,
 // downloading from HuggingFace if necessary.
-func (l *localProvider) resolveModel(ctx context.Context, out io.Writer) (string, error) {
+func (l *localProvider) resolveModel(ctx context.Context) (string, error) {
 	spec := l.modelSpec
 
 	// Local file path
@@ -99,7 +105,7 @@ func (l *localProvider) resolveModel(ctx context.Context, out io.Writer) (string
 
 	// HuggingFace repo ID (org/model)
 	if strings.Count(spec, "/") == 1 {
-		return l.downloadFromHF(ctx, spec, out)
+		return l.downloadFromHF(ctx, spec)
 	}
 
 	return "", fmt.Errorf("deus: cannot resolve model %q — provide a .gguf path or a HuggingFace repo ID (org/model)", spec)
@@ -111,7 +117,7 @@ func isLocalPath(s string) bool {
 
 // downloadFromHF ensures all shards of the selected GGUF are cached locally and
 // returns the path to the first (or only) shard.
-func (l *localProvider) downloadFromHF(ctx context.Context, repoID string, out io.Writer) (string, error) {
+func (l *localProvider) downloadFromHF(ctx context.Context, repoID string) (string, error) {
 	cacheDir := filepath.Join(homeDir(), localCacheDir, strings.ReplaceAll(repoID, "/", "--"))
 	if err := os.MkdirAll(cacheDir, 0o755); err != nil {
 		return "", err
@@ -139,7 +145,7 @@ func (l *localProvider) downloadFromHF(ctx context.Context, repoID string, out i
 	}
 	firstShard := filepath.Join(cacheDir, shards[0])
 	if allCached {
-		fmt.Fprintf(out, "using cached model: %s\n", firstShard)
+		fmt.Fprintf(l.log, "using cached model: %s\n", firstShard)
 		return firstShard, nil
 	}
 
@@ -147,14 +153,14 @@ func (l *localProvider) downloadFromHF(ctx context.Context, repoID string, out i
 	for i, shard := range shards {
 		dest := filepath.Join(cacheDir, shard)
 		if _, err := os.Stat(dest); err == nil {
-			fmt.Fprintf(out, "shard %d/%d already cached\n", i+1, len(shards))
+			fmt.Fprintf(l.log, "shard %d/%d already cached\n", i+1, len(shards))
 			continue
 		}
 		label := shard
 		if len(shards) > 1 {
 			label = fmt.Sprintf("%s (shard %d/%d)", shard, i+1, len(shards))
 		}
-		fmt.Fprintf(out, "downloading %s ...\n", label)
+		fmt.Fprintf(l.log, "downloading %s ...\n", label)
 		if err := l.hfDownloadFile(ctx, repoID, shard, dest); err != nil {
 			return "", fmt.Errorf("download failed for %s: %w", shard, err)
 		}
@@ -343,7 +349,7 @@ func (l *localProvider) hfDownloadFile(ctx context.Context, repoID, filename, de
 			written += int64(n)
 			if time.Since(lastPrint) > 2*time.Second && total > 0 {
 				pct := float64(written) / float64(total) * 100
-				fmt.Printf("\r  %.1f%% (%s / %s)", pct, humanBytes(written), humanBytes(total))
+				fmt.Fprintf(l.log, "\r  %.1f%% (%s / %s)", pct, humanBytes(written), humanBytes(total))
 				lastPrint = time.Now()
 			}
 		}
@@ -356,13 +362,13 @@ func (l *localProvider) hfDownloadFile(ctx context.Context, repoID, filename, de
 		}
 	}
 	if total > 0 {
-		fmt.Println()
+		fmt.Fprintln(l.log)
 	}
 	f.Close()
 	return os.Rename(tmp, dest)
 }
 
-func (l *localProvider) startServer(ctx context.Context, modelPath string, out io.Writer) error {
+func (l *localProvider) startServer(ctx context.Context, modelPath string) error {
 	serverBin := l.findServerBinary()
 	if serverBin == "" {
 		return fmt.Errorf(`deus: llama-server not found in PATH
@@ -380,7 +386,7 @@ func (l *localProvider) startServer(ctx context.Context, modelPath string, out i
 		"--log-disable",
 	}
 
-	fmt.Fprintf(out, "starting llama-server on port %d (may take a moment to load model) ...\n", l.port)
+	fmt.Fprintf(l.log, "starting llama-server on port %d (may take a moment to load model) ...\n", l.port)
 	var stderrBuf bytes.Buffer
 	cmd := exec.CommandContext(ctx, serverBin, args...)
 	cmd.Stderr = &stderrBuf
@@ -405,7 +411,7 @@ func (l *localProvider) startServer(ctx context.Context, modelPath string, out i
 			body, _ := io.ReadAll(resp.Body)
 			resp.Body.Close()
 			if resp.StatusCode == http.StatusOK {
-				fmt.Fprintln(out)
+				fmt.Fprintln(l.log)
 				break
 			}
 			// 503 = still loading; any other non-200 is unexpected
@@ -415,7 +421,7 @@ func (l *localProvider) startServer(ctx context.Context, modelPath string, out i
 		}
 
 		if time.Since(lastDot) >= 3*time.Second {
-			fmt.Fprint(out, ".")
+			fmt.Fprint(l.log, ".")
 			lastDot = time.Now()
 		}
 		time.Sleep(500 * time.Millisecond)
@@ -430,7 +436,7 @@ func (l *localProvider) startServer(ctx context.Context, modelPath string, out i
 		return fmt.Errorf("llama-server did not start within %v", localServerStartTimeout)
 	}
 
-	fmt.Fprintf(out, "llama-server ready\n")
+	fmt.Fprintf(l.log, "llama-server ready\n")
 	l.inner = &openAICompat{baseURL: baseURL, apiKey: "local", model: "local"}
 	return nil
 }

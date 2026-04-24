@@ -23,6 +23,7 @@ type LocalConfig struct {
 	Port       int
 	NGPULayers int
 	NCtx       int
+	Verbose    bool
 }
 
 // New creates a provider by name. model/baseURL/apiKey may be empty to use defaults.
@@ -31,7 +32,11 @@ func New(name, model, baseURL, apiKey string, localCfg ...LocalConfig) (Provider
 	case "huggingface", "hf":
 		return NewHuggingFace(apiKey, model), nil
 	case "ollama":
-		return NewOllama(model, baseURL), nil
+		var verbose bool
+		if len(localCfg) > 0 {
+			verbose = localCfg[0].Verbose
+		}
+		return NewOllama(model, baseURL, verbose), nil
 	case "anthropic":
 		return NewAnthropic(apiKey, model), nil
 	case "openai":
@@ -43,7 +48,7 @@ func New(name, model, baseURL, apiKey string, localCfg ...LocalConfig) (Provider
 		if len(localCfg) > 0 {
 			cfg = localCfg[0]
 		}
-		return NewLocal(model, cfg.HFFilename, cfg.HFToken, cfg.Port, cfg.NGPULayers, cfg.NCtx), nil
+		return NewLocal(model, cfg.HFFilename, cfg.HFToken, cfg.Port, cfg.NGPULayers, cfg.NCtx, cfg.Verbose), nil
 	default:
 		return nil, fmt.Errorf("unknown provider %q — valid: local, huggingface, ollama, anthropic, openai, gemini", name)
 	}
