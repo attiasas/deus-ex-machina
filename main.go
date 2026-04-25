@@ -13,10 +13,14 @@ import (
 	"github.com/attiasas/deus-ex-machina/tools"
 )
 
+// Injected at build time via -ldflags "-X main.version=vX.Y.Z"
+var version = "dev"
+
 const usage = `deus — a free, open-source AI coding agent (default: Qwen2.5-Coder-7B, runs 100% locally)
 
 Usage:
   deus [flags] [prompt]
+  deus version
 
 If prompt is omitted, reads from stdin.
 
@@ -58,6 +62,11 @@ Examples:
   echo "what does main.go do?" | deus`)
 	}
 	flag.Parse()
+
+	if flag.NArg() == 1 && flag.Arg(0) == "version" {
+		fmt.Println(version)
+		return
+	}
 
 	// Collect the prompt
 	var prompt string

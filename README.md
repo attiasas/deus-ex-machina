@@ -1,5 +1,7 @@
 # deus ex machina
 
+[![Test CI](https://github.com/attiasas/deus-ex-machina/actions/workflows/test.yml/badge.svg)](https://github.com/attiasas/deus-ex-machina/actions/workflows/test.yml)
+
 A free, open-source AI coding agent that runs locally by default. No API keys required.
 
 **Default:** downloads [Qwen2.5-7B-Instruct](https://huggingface.co/Qwen/Qwen2.5-7B-Instruct-GGUF) (~4.7 GB, Apache-2.0) and runs it on your machine. This model has the best tool-calling format compliance among 7B local models. Cloud providers (Anthropic, OpenAI, Gemini, HuggingFace) are optional.
@@ -27,13 +29,24 @@ cmake -B build && cmake --build build --target llama-server -j
 
 ### Install
 
+**Download a pre-built binary** from the [releases page](https://github.com/attiasas/deus-ex-machina/releases):
+
+```bash
+# Example: Linux amd64
+curl -L https://github.com/attiasas/deus-ex-machina/releases/latest/download/deus-<version>-linux-amd64 -o deus
+chmod +x deus
+sudo mv deus /usr/local/bin/
+```
+
+**Build from source:**
+
 ```bash
 git clone https://github.com/attiasas/deus-ex-machina
 cd deus-ex-machina
 go build -o deus .
 ```
 
-Or install directly:
+**Install via Go:**
 
 ```bash
 go install github.com/attiasas/deus-ex-machina@latest
@@ -54,6 +67,7 @@ The model is cached at `~/.cache/deus-ex-machina/models/` and reused on subseque
 
 ```
 deus [flags] [prompt]
+deus version
 ```
 
 If `prompt` is omitted, `deus` reads from stdin — useful for piping:
@@ -151,6 +165,8 @@ The `ask_user` tool lets the agent pause mid-task to ask you a question — usef
 ## All Flags
 
 ```
+  version               Print version and exit
+
   -provider string      Provider to use (default "local")
   -model string         Model: HF repo ID, local .gguf path, or provider model name
   -system string        System prompt
