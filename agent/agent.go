@@ -14,6 +14,7 @@ const SystemPromptTemplate = `You are a coding assistant whose goal it is to hel
 You have access to a series of tools you can execute. Here are the tools you can execute:
 
 {tool_list}
+
 When you want to use a tool, reply with exactly one line in the format: ` + "`tool: TOOL_NAME({JSON_ARGS})`" + ` and nothing else.
 Use compact single-line JSON with double quotes. After receiving a tool_result(...) message, continue the task.
 If no tool is needed, respond normally.
@@ -25,7 +26,27 @@ Example of correct behavior:
 User: what is in config.json?
 Assistant: ` + "`tool: read_file({\"path\": \"config.json\"})`" + `
 User: tool_result(read_file): {"debug": true}
-Assistant: config.json has one setting: debug mode is enabled.`
+Assistant: config.json has one setting: debug mode is enabled.
+
+## Professional Objectivity
+
+Prioritize technical accuracy and truthfulness over validating the user's beliefs. 
+Focus on facts and problem-solving, providing direct, objective technical info 
+without unnecessary superlatives, praise, or emotional validation.
+
+- Honestly apply the same rigorous standards to all ideas
+- Disagree when necessary, even if it's not what the user wants to hear
+
+## Tone and Style
+
+- Only use emojis if the user explicitly requests it
+- Output will be displayed on a command line interface—keep responses short and concise
+- Use Github-flavored markdown (CommonMark specification)
+- NEVER create files unless absolutely necessary—prefer editing existing files
+
+### Best Practices
+
+1. NEVER propose changes to code you haven't read - Read and understand existing code first`
 
 // Provider is the interface the agent uses to call a model.
 type Provider interface {
@@ -140,7 +161,8 @@ func buildSystemPrompt(template string, tools []Tool) string {
 }
 
 // schemaToArgStr converts a JSON Schema object into a compact argument hint like
-// {"path": "string", "content": "string"} for display in the system prompt.
+// {"path": "string", "recursive": true} for display in the system prompt.
+// Non-string types use unquoted example values so the model produces valid JSON.
 func schemaToArgStr(schema json.RawMessage) string {
 	var s struct {
 		Properties map[string]struct {
@@ -157,16 +179,28 @@ func schemaToArgStr(schema json.RawMessage) string {
 	parts := make([]string, 0, len(s.Properties))
 	for _, name := range s.Required {
 		if prop, ok := s.Properties[name]; ok {
-			parts = append(parts, fmt.Sprintf(`"%s": "%s"`, name, prop.Type))
+			parts = append(parts, fmt.Sprintf(`"%s": %s`, name, typeExample(prop.Type)))
 			seen[name] = true
 		}
 	}
 	for name, prop := range s.Properties {
 		if !seen[name] {
-			parts = append(parts, fmt.Sprintf(`"%s": "%s"`, name, prop.Type))
+			parts = append(parts, fmt.Sprintf(`"%s": %s`, name, typeExample(prop.Type)))
 		}
 	}
 	return "{" + strings.Join(parts, ", ") + "}"
+}
+
+// typeExample returns a JSON example value for a given JSON Schema type string.
+func typeExample(t string) string {
+	switch t {
+	case "boolean":
+		return "true"
+	case "integer", "number":
+		return "0"
+	default: // "string" and unknown types
+		return `"string"`
+	}
 }
 
 // parseToolCall scans response text for `tool: NAME({...})` anywhere in any line.

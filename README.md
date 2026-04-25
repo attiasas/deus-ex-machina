@@ -94,7 +94,7 @@ deus -model Qwen/Qwen2.5-Coder-7B-Instruct-GGUF -local-filename "*q8_0.gguf" "ex
 deus -model /path/to/model.gguf "write tests for tools/shell.go"
 
 # Control hardware
-deus -local-gpu 35 -local-ctx 8192 "refactor the provider package"
+deus -local-gpu 35 -local-ctx 32768 "refactor the provider package"
 ```
 
 ### HuggingFace Inference API
@@ -130,15 +130,21 @@ GEMINI_API_KEY=...    deus -provider gemini "add docstrings to all exported func
 
 ## Tools
 
-The agent has access to these tools:
-
 | Tool | What it does |
 |---|---|
 | `read_file` | Read a file from disk |
 | `write_file` | Write content to a file (creates parent dirs) |
+| `edit_file` | In-place string replacement in a file (first occurrence) |
+| `glob` | Find files by path pattern — supports `**` (e.g. `**/*.go`) |
+| `grep` | Search files with a regex — returns `file:line: content` matches |
+| `web_fetch` | Fetch a URL and return its text content |
+| `web_search` | Search the web via DuckDuckGo (no API key required) |
 | `shell` | Run a shell command (prompts `[y/N]` before executing) |
+| `ask_user` | Pause and ask you a clarification question before continuing |
 
-The shell tool asks for confirmation before running each command. Pass `-no-confirm` to skip (use with care).
+The `shell` tool asks for confirmation before running each command. Pass `-no-confirm` to skip (use with care).
+
+The `ask_user` tool lets the agent pause mid-task to ask you a question — useful when the task is ambiguous or requires a decision.
 
 ---
 
@@ -151,13 +157,13 @@ The shell tool asks for confirmation before running each command. Pass `-no-conf
   -max-iter int         Max agent loop iterations (default 20)
   -base-url string      API base URL override (for openai / ollama)
   -no-confirm           Skip shell command confirmation prompts (unsafe)
-  -v                    Verbose: also print tool outputs
+  -v                    Verbose: show tool calls, results, and provider status messages
 
 Local provider flags:
   -local-filename string   GGUF filename pattern within HF repo (e.g. *q4_k_m.gguf)
   -local-port int          llama-server port (default 8765)
   -local-gpu int           GPU layers (-1 = all layers on GPU, 0 = auto)
-  -local-ctx int           Context window size (default 2048)
+  -local-ctx int           Context window size (default 32768)
 ```
 
 ## Environment Variables
