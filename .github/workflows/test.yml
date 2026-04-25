@@ -1,0 +1,46 @@
+name: Test CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: ["**"]
+
+jobs:
+  test:
+    name: Test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Setup Go
+        uses: actions/setup-go@v6
+        with:
+          go-version-file: go.mod
+
+      - name: Vet
+        run: go vet ./...
+
+      - name: Test
+        run: go test -v -count=1 ./... 2>&1 | tee test_output.txt
+
+      - name: Summary
+        if: always()
+        run: |
+          GO_VERSION=$(go env GOVERSION)
+          PASSED=$(grep -c "^--- PASS" test_output.txt || true)
+          FAILED=$(grep -c "^--- FAIL" test_output.txt || true)
+
+          if [ "$FAILED" -eq 0 ]; then
+            STATUS="✅ PASSED"
+          else
+            STATUS="❌ FAILED"
+          fi
+
+          echo "## Test Results $STATUS" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "| | |" >> $GITHUB_STEP_SUMMARY
+          echo "|---|---|" >> $GITHUB_STEP_SUMMARY
+          echo "| Go version | \`$GO_VERSION\` |" >> $GITHUB_STEP_SUMMARY
+          echo "| Passed | $PASSED |" >> $GITHUB_STEP_SUMMARY
+          echo "| Failed | $FAILED |" >> $GITHUB_STEP_SUMMARY
