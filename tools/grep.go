@@ -13,8 +13,10 @@ import (
 
 type GrepTool struct{}
 
-func (GrepTool) Name() string        { return "grep" }
-func (GrepTool) Description() string { return "Search files for lines matching a regex. Returns file:line:content for each match." }
+func (GrepTool) Name() string { return "grep" }
+func (GrepTool) Description() string {
+	return "Search files for lines matching a regex. Returns file:line:content for each match."
+}
 func (GrepTool) InputSchema() json.RawMessage {
 	return json.RawMessage(`{
 		"type": "object",

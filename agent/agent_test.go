@@ -12,9 +12,9 @@ type mockTool struct {
 	schema     json.RawMessage
 }
 
-func (m mockTool) Name() string                                              { return m.name }
-func (m mockTool) Description() string                                       { return m.desc }
-func (m mockTool) InputSchema() json.RawMessage                              { return m.schema }
+func (m mockTool) Name() string                                                 { return m.name }
+func (m mockTool) Description() string                                          { return m.desc }
+func (m mockTool) InputSchema() json.RawMessage                                 { return m.schema }
 func (m mockTool) Execute(_ context.Context, _ json.RawMessage) (string, error) { return "", nil }
 
 func assertJSON(t *testing.T, got json.RawMessage, want string) {

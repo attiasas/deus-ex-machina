@@ -111,7 +111,9 @@ func parseAnthropicStream(body io.Reader, out io.Writer) (*agent.Response, error
 			}
 		case "message_delta":
 			var e struct {
-				Delta struct{ StopReason string `json:"stop_reason"` } `json:"delta"`
+				Delta struct {
+					StopReason string `json:"stop_reason"`
+				} `json:"delta"`
 			}
 			if json.Unmarshal([]byte(payload), &e) == nil && e.Delta.StopReason != "" {
 				stopReason = e.Delta.StopReason

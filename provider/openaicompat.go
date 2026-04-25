@@ -75,8 +75,10 @@ func parseOpenAIStream(body io.Reader, out io.Writer) (*agent.Response, error) {
 
 		var event struct {
 			Choices []struct {
-				Delta        struct{ Content string `json:"content"` } `json:"delta"`
-				FinishReason string                                     `json:"finish_reason"`
+				Delta struct {
+					Content string `json:"content"`
+				} `json:"delta"`
+				FinishReason string `json:"finish_reason"`
 			} `json:"choices"`
 		}
 		if err := json.Unmarshal([]byte(payload), &event); err != nil {

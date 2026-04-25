@@ -99,7 +99,9 @@ func parseGeminiStream(body io.Reader, out io.Writer) (*agent.Response, error) {
 		var event struct {
 			Candidates []struct {
 				Content struct {
-					Parts []struct{ Text string `json:"text"` } `json:"parts"`
+					Parts []struct {
+						Text string `json:"text"`
+					} `json:"parts"`
 				} `json:"content"`
 				FinishReason string `json:"finishReason"`
 			} `json:"candidates"`
