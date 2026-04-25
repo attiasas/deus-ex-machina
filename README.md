@@ -140,8 +140,11 @@ GEMINI_API_KEY=...    deus -provider gemini "add docstrings to all exported func
 | `web_fetch` | Fetch a URL and return its text content |
 | `web_search` | Search the web via DuckDuckGo (no API key required) |
 | `shell` | Run a shell command (prompts `[y/N]` before executing) |
+| `ask_user` | Pause and ask you a clarification question before continuing |
 
-The shell tool asks for confirmation before running each command. Pass `-no-confirm` to skip (use with care).
+The `shell` tool asks for confirmation before running each command. Pass `-no-confirm` to skip (use with care).
+
+The `ask_user` tool lets the agent pause mid-task to ask you a question — useful when the task is ambiguous or requires a decision.
 
 ---
 

@@ -103,6 +103,7 @@ Examples:
 	reg.Register(tools.WebFetch{})
 	reg.Register(tools.WebSearch{})
 	reg.Register(tools.Shell{NoConfirm: *noConfirm})
+	reg.Register(tools.AskUser{})
 
 	a := &agent.Agent{
 		Provider:             p,
