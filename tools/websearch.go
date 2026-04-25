@@ -13,8 +13,10 @@ import (
 
 type WebSearch struct{}
 
-func (WebSearch) Name() string        { return "web_search" }
-func (WebSearch) Description() string { return "Search the web via DuckDuckGo and return results with titles, snippets, and URLs." }
+func (WebSearch) Name() string { return "web_search" }
+func (WebSearch) Description() string {
+	return "Search the web via DuckDuckGo and return results with titles, snippets, and URLs."
+}
 func (WebSearch) InputSchema() json.RawMessage {
 	return json.RawMessage(`{
 		"type": "object",

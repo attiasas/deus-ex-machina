@@ -68,7 +68,40 @@ Examples:
 		return
 	}
 
-	// Collect the prompt
+	prompt, err := collectPrompt()
+	if err != nil {
+		flag.Usage()
+		handleError(err)
+	}
+
+	p, err := setupProvider(provider.ProviderParam{
+		Name:          *providerName,
+		Model:         *model,
+		BaseURL:       *baseURL,
+		APIKey:        resolveAPIKey(*providerName),
+		LocalFilename: *localFilename,
+		LocalPort:     *localPort,
+		LocalGPU:      *localGPU,
+		LocalCtx:      *localCtx,
+	}, *verbose)
+	if err != nil {
+		handleError(err)
+	}
+
+	a := &agent.Agent{
+		Provider:             p,
+		Registry:             tools.SetupToolRegistry(*noConfirm),
+		MaxIter:              *maxIter,
+		Verbose:              *verbose,
+		SystemPromptTemplate: *systemPrompt, // empty = use default
+	}
+
+	if err := a.Run(context.Background(), prompt); err != nil {
+		handleError(err)
+	}
+}
+
+func collectPrompt() (string, error) {
 	var prompt string
 	if flag.NArg() > 0 {
 		prompt = strings.Join(flag.Args(), " ")
@@ -80,53 +113,22 @@ Examples:
 		}
 		prompt = strings.Join(lines, "\n")
 	}
-
 	if strings.TrimSpace(prompt) == "" {
-		fmt.Fprintln(os.Stderr, "deus: no prompt provided")
-		flag.Usage()
-		os.Exit(1)
+		return "", fmt.Errorf("no prompt provided")
 	}
+	return prompt, nil
+}
 
-	apiKey := resolveAPIKey(*providerName)
-
+func setupProvider(params provider.ProviderParam, verbose bool) (provider.Provider, error) {
 	localCfg := provider.LocalConfig{
-		HFFilename: *localFilename,
+		HFFilename: params.LocalFilename,
 		HFToken:    os.Getenv("HF_TOKEN"),
-		Port:       *localPort,
-		NGPULayers: *localGPU,
-		NCtx:       *localCtx,
-		Verbose:    *verbose,
+		Port:       params.LocalPort,
+		NGPULayers: params.LocalGPU,
+		NCtx:       params.LocalCtx,
+		Verbose:    verbose,
 	}
-	p, err := provider.New(*providerName, *model, *baseURL, apiKey, localCfg)
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "deus: %v\n", err)
-		os.Exit(1)
-	}
-
-	reg := tools.NewRegistry()
-	reg.Register(tools.ReadFile{})
-	reg.Register(tools.WriteFile{})
-	reg.Register(tools.EditFile{})
-	reg.Register(tools.Glob{})
-	reg.Register(tools.GrepTool{})
-	reg.Register(tools.WebFetch{})
-	reg.Register(tools.WebSearch{})
-	reg.Register(tools.Shell{NoConfirm: *noConfirm})
-	reg.Register(tools.AskUser{})
-
-	a := &agent.Agent{
-		Provider:             p,
-		Registry:             reg,
-		MaxIter:              *maxIter,
-		Verbose:              *verbose,
-		SystemPromptTemplate: *systemPrompt, // empty = use default
-	}
-
-	ctx := context.Background()
-	if err := a.Run(ctx, prompt); err != nil {
-		fmt.Fprintf(os.Stderr, "deus: %v\n", err)
-		os.Exit(1)
-	}
+	return provider.New(params.Name, params.Model, params.BaseURL, params.APIKey, localCfg)
 }
 
 func resolveAPIKey(providerName string) string {
@@ -141,4 +143,9 @@ func resolveAPIKey(providerName string) string {
 		return os.Getenv("GEMINI_API_KEY")
 	}
 	return ""
+}
+
+func handleError(err error) {
+	fmt.Fprintf(os.Stderr, "deus: %v\n", err)
+	os.Exit(1)
 }

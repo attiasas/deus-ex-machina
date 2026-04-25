@@ -207,7 +207,7 @@ func typeExample(t string) string {
 // The model may prepend reasoning text or wrap the call in backticks — both are handled.
 func parseToolCall(text string) (ParsedToolCall, bool) {
 	for _, line := range strings.Split(text, "\n") {
-		line = strings.TrimSpace(line)
+		line = strings.TrimSpace(strings.ToLower(line))
 
 		// Find "tool: " anywhere in the line, not just at the start
 		idx := strings.Index(line, "tool: ")

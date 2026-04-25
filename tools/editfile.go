@@ -10,8 +10,10 @@ import (
 
 type EditFile struct{}
 
-func (EditFile) Name() string        { return "edit_file" }
-func (EditFile) Description() string { return "Replace the first occurrence of old_string with new_string in a file." }
+func (EditFile) Name() string { return "edit_file" }
+func (EditFile) Description() string {
+	return "Replace the first occurrence of old_string with new_string in a file."
+}
 func (EditFile) InputSchema() json.RawMessage {
 	return json.RawMessage(`{
 		"type": "object",

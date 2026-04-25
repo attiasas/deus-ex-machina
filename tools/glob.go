@@ -11,8 +11,10 @@ import (
 
 type Glob struct{}
 
-func (Glob) Name() string        { return "glob" }
-func (Glob) Description() string { return "Find files matching a glob pattern (supports **). Returns matching paths." }
+func (Glob) Name() string { return "glob" }
+func (Glob) Description() string {
+	return "Find files matching a glob pattern (supports **). Returns matching paths."
+}
 func (Glob) InputSchema() json.RawMessage {
 	return json.RawMessage(`{
 		"type": "object",

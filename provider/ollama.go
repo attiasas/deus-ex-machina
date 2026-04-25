@@ -67,7 +67,9 @@ func (o *ollama) ensureModel(ctx context.Context) error {
 	}
 	defer resp.Body.Close()
 	var result struct {
-		Models []struct{ Name string `json:"name"` } `json:"models"`
+		Models []struct {
+			Name string `json:"name"`
+		} `json:"models"`
 	}
 	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
 		return err
