@@ -53,7 +53,7 @@ func NewLocal(modelSpec, hfFilename, hfToken string, port, nGPU, nCtx int, verbo
 	// nGPU == 0 means "user didn't set it" → default to CPU-only (safe for all hardware)
 	// Pass -1 explicitly to offload all layers to GPU
 	if nCtx == 0 {
-		nCtx = 8192
+		nCtx = 32768 // Qwen2.5-7B native context; GQA keeps KV-cache ~1.75 GB at full window
 	}
 	if hfToken == "" {
 		hfToken = os.Getenv("HF_TOKEN")

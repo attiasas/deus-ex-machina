@@ -97,6 +97,11 @@ Examples:
 	reg := tools.NewRegistry()
 	reg.Register(tools.ReadFile{})
 	reg.Register(tools.WriteFile{})
+	reg.Register(tools.EditFile{})
+	reg.Register(tools.Glob{})
+	reg.Register(tools.GrepTool{})
+	reg.Register(tools.WebFetch{})
+	reg.Register(tools.WebSearch{})
 	reg.Register(tools.Shell{NoConfirm: *noConfirm})
 
 	a := &agent.Agent{

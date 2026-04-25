@@ -147,6 +147,33 @@ func TestSchemaToArgStr(t *testing.T) {
 			},
 		},
 		{
+			name:   "boolean param emits unquoted true",
+			schema: `{"type":"object","properties":{"recursive":{"type":"boolean"}},"required":["recursive"]}`,
+			check: func(t *testing.T, got string) {
+				if !strings.Contains(got, `"recursive": true`) {
+					t.Errorf("boolean param should emit unquoted true, got %q", got)
+				}
+			},
+		},
+		{
+			name:   "integer param emits unquoted zero",
+			schema: `{"type":"object","properties":{"count":{"type":"integer"}},"required":["count"]}`,
+			check: func(t *testing.T, got string) {
+				if !strings.Contains(got, `"count": 0`) {
+					t.Errorf("integer param should emit unquoted 0, got %q", got)
+				}
+			},
+		},
+		{
+			name:   "boolean hint produces valid JSON",
+			schema: `{"type":"object","properties":{"recursive":{"type":"boolean"},"path":{"type":"string"}},"required":["path"]}`,
+			check: func(t *testing.T, got string) {
+				if err := json.Unmarshal([]byte(got), new(any)); err != nil {
+					t.Errorf("hint is not valid JSON: %v — got %q", err, got)
+				}
+			},
+		},
+		{
 			name:   "invalid schema",
 			schema: `not json`,
 			check: func(t *testing.T, got string) {

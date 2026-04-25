@@ -140,7 +140,8 @@ func buildSystemPrompt(template string, tools []Tool) string {
 }
 
 // schemaToArgStr converts a JSON Schema object into a compact argument hint like
-// {"path": "string", "content": "string"} for display in the system prompt.
+// {"path": "string", "recursive": true} for display in the system prompt.
+// Non-string types use unquoted example values so the model produces valid JSON.
 func schemaToArgStr(schema json.RawMessage) string {
 	var s struct {
 		Properties map[string]struct {
@@ -157,16 +158,28 @@ func schemaToArgStr(schema json.RawMessage) string {
 	parts := make([]string, 0, len(s.Properties))
 	for _, name := range s.Required {
 		if prop, ok := s.Properties[name]; ok {
-			parts = append(parts, fmt.Sprintf(`"%s": "%s"`, name, prop.Type))
+			parts = append(parts, fmt.Sprintf(`"%s": %s`, name, typeExample(prop.Type)))
 			seen[name] = true
 		}
 	}
 	for name, prop := range s.Properties {
 		if !seen[name] {
-			parts = append(parts, fmt.Sprintf(`"%s": "%s"`, name, prop.Type))
+			parts = append(parts, fmt.Sprintf(`"%s": %s`, name, typeExample(prop.Type)))
 		}
 	}
 	return "{" + strings.Join(parts, ", ") + "}"
+}
+
+// typeExample returns a JSON example value for a given JSON Schema type string.
+func typeExample(t string) string {
+	switch t {
+	case "boolean":
+		return "true"
+	case "integer", "number":
+		return "0"
+	default: // "string" and unknown types
+		return `"string"`
+	}
 }
 
 // parseToolCall scans response text for `tool: NAME({...})` anywhere in any line.
