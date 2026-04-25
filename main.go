@@ -74,27 +74,23 @@ Examples:
 		handleError(err)
 	}
 
-	apiKey := resolveAPIKey(*providerName)
-
-	p, err := setupProvider(providerParam{
-		name:          *providerName,
-		model:         *model,
-		baseURL:       *baseURL,
-		apiKey:        apiKey,
-		localFilename: *localFilename,
-		localPort:     *localPort,
-		localGPU:      *localGPU,
-		localCtx:      *localCtx,
+	p, err := setupProvider(provider.ProviderParam{
+		Name:          *providerName,
+		Model:         *model,
+		BaseURL:       *baseURL,
+		APIKey:        resolveAPIKey(*providerName),
+		LocalFilename: *localFilename,
+		LocalPort:     *localPort,
+		LocalGPU:      *localGPU,
+		LocalCtx:      *localCtx,
 	}, *verbose)
 	if err != nil {
 		handleError(err)
 	}
 
-	reg := setupToolRegistry(*noConfirm)
-
 	a := &agent.Agent{
 		Provider:             p,
-		Registry:             reg,
+		Registry:             tools.SetupToolRegistry(*noConfirm),
 		MaxIter:              *maxIter,
 		Verbose:              *verbose,
 		SystemPromptTemplate: *systemPrompt, // empty = use default
@@ -123,44 +119,16 @@ func collectPrompt() (string, error) {
 	return prompt, nil
 }
 
-type providerParam struct {
-	// common provider options
-	name  string
-	model string
-	// API-based provider options
-	baseURL string
-	apiKey  string
-	// local provider options
-	localFilename string
-	localPort     int
-	localGPU      int
-	localCtx      int
-}
-
-func setupProvider(params providerParam, verbose bool) (provider.Provider, error) {
+func setupProvider(params provider.ProviderParam, verbose bool) (provider.Provider, error) {
 	localCfg := provider.LocalConfig{
-		HFFilename: params.localFilename,
+		HFFilename: params.LocalFilename,
 		HFToken:    os.Getenv("HF_TOKEN"),
-		Port:       params.localPort,
-		NGPULayers: params.localGPU,
-		NCtx:       params.localCtx,
+		Port:       params.LocalPort,
+		NGPULayers: params.LocalGPU,
+		NCtx:       params.LocalCtx,
 		Verbose:    verbose,
 	}
-	return provider.New(params.name, params.model, params.baseURL, params.apiKey, localCfg)
-}
-
-func setupToolRegistry(noConfirm bool) *tools.Registry {
-	reg := tools.NewRegistry()
-	reg.Register(tools.ReadFile{})
-	reg.Register(tools.WriteFile{})
-	reg.Register(tools.EditFile{})
-	reg.Register(tools.Glob{})
-	reg.Register(tools.GrepTool{})
-	reg.Register(tools.WebFetch{})
-	reg.Register(tools.WebSearch{})
-	reg.Register(tools.Shell{NoConfirm: noConfirm})
-	reg.Register(tools.AskUser{})
-	return reg
+	return provider.New(params.Name, params.Model, params.BaseURL, params.APIKey, localCfg)
 }
 
 func resolveAPIKey(providerName string) string {

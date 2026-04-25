@@ -16,6 +16,21 @@ type Provider interface {
 	Complete(ctx context.Context, messages []agent.Message, out io.Writer) (*agent.Response, error)
 }
 
+// ProviderParam holds all possible parameters for any provider. Not all fields are used by every provider.
+type ProviderParam struct {
+	// common provider options
+	Name  string
+	Model string
+	// API-based provider options
+	BaseURL string
+	APIKey  string
+	// local provider options
+	LocalFilename string
+	LocalPort     int
+	LocalGPU      int
+	LocalCtx      int
+}
+
 // LocalConfig holds extra options for the local provider.
 type LocalConfig struct {
 	HFFilename string

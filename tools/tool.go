@@ -11,6 +11,20 @@ type Registry struct {
 	tools map[string]agent.Tool
 }
 
+func SetupToolRegistry(noConfirm bool) *Registry {
+	reg := NewRegistry()
+	reg.Register(ReadFile{})
+	reg.Register(WriteFile{})
+	reg.Register(EditFile{})
+	reg.Register(Glob{})
+	reg.Register(GrepTool{})
+	reg.Register(WebFetch{})
+	reg.Register(WebSearch{})
+	reg.Register(Shell{NoConfirm: noConfirm})
+	reg.Register(AskUser{})
+	return reg
+}
+
 func NewRegistry() *Registry {
 	return &Registry{tools: make(map[string]agent.Tool)}
 }
