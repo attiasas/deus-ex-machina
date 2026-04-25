@@ -43,7 +43,7 @@ jobs:
         env:
           GOOS: ${{ matrix.goos }}
           GOARCH: ${{ matrix.goarch }}
-        run: go build -ldflags="-s -w" -o "${{ steps.asset.outputs.name }}" .
+        run: go build -ldflags="-s -w -X main.version=${{ github.event.release.tag_name }}" -o "${{ steps.asset.outputs.name }}" .
 
       - name: Checksum
         run: sha256sum "${{ steps.asset.outputs.name }}" > "${{ steps.asset.outputs.name }}.sha256"
